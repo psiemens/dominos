@@ -28,12 +28,16 @@ class Dominos(object):
 
 		self.choose_products()
 
-		#self.order.set_products([{"Code":"14SCEXTRAV","Qty":1,"ID":1,"Instructions":"","isNew":True,"Options":{"X":{"1/1":"1"},"C":{"1/1":"1.5"},"P":{"1/1":"1"},"S":{"1/1":"1"},"B":{"1/1":"1"},"H":{"1/1":"1"},"R":{"1/1":"1"},"G":{"1/1":"1"},"M":{"1/1":"1"},"O":{"1/1":"1"}}}])
+		self.validate_order()
 
 		self.price_order()
 
-		if click.confirm("Your total is $%s. Place order?" % self.order.get_payment(), abort=True):
+		if click.confirm("Your total is $%s. Place order?" % self.order.get_total(), abort=True):
 			click.echo('Your order has been placed!')
+
+		self.provide_information()
+
+		click.echo(self.order.json())
 
 
 	def select_store(self, address, city, province, postal_code):
@@ -73,9 +77,9 @@ class Dominos(object):
 				choices = click.prompt('Choose toppings (comma-separated list). Type "options" for selection', type=str)
 				if choices == 'options':
 					click.echo("cheese, pepperoni, ham, pineapple")
-					choose_toppings()
+					return choose_toppings()
 				else:
-					return choices
+					return choices.split(',')
 
 			pizza['toppings'] = choose_toppings()
 
@@ -94,6 +98,14 @@ class Dominos(object):
 	def price_order(self):
 		response = requests.post("https://order.dominos.ca/power/price-order", json=self.order.json())
 		self.order.set_price(response.json())
+
+	def provide_information(self):
+		first_name = click.prompt('First name', type=str)
+		last_name = click.prompt('Last name', type=str)
+		phone = click.prompt('Phone number', type=str)
+		email = click.prompt('Email', type=str)
+
+		self.order.set_information(first_name, last_name, phone, email)
 
 class DominosOrder(object):
 
@@ -131,14 +143,48 @@ class DominosOrder(object):
 		self.order["StoreID"] = store["StoreID"]
 
 	def set_products(self, pizzas):
-		for pizza in pizzas:
-			click.echo(pizza)
-		#self.order["Products"] = products
+
+		SIZES = {
+			's': '10SCREEN',
+			'm': '12SCREEN',
+			'l': '14SCREEN'
+		}
+
+		OPTIONS = {
+			'cheese': 'C',
+			'pepperoni': 'P',
+			'bacon': 'B',
+			'ham': 'H'
+		}
+
+		products = []
+
+		def build_options(toppings):
+			options = {}
+			for option in toppings:
+				options[OPTIONS[option]] = {'1/1': '1'}
+			return options
+
+		for n, pizza in enumerate(pizzas):
+			products.append({
+				'Code': SIZES[pizza['size']],
+				'Qty': 1,
+				'ID': n,
+				'Instructions': '',
+				'isNew': True,
+				'Options': build_options(pizza['toppings']),
+			})
+
+		self.order["Products"] = products
 
 	def set_price(self, response):
 		self.order["Amounts"] = response["Order"]["Amounts"]
 
-	def get_payment(self):
+	def set_information(self, first_name, last_name, phone, email):
+		#self.order["First"]
+		pass
+
+	def get_total(self):
 		return self.order["Amounts"]["Payment"]
 
 	def json(self):
@@ -149,4 +195,3 @@ class PizzaProblem(Exception):
 
 if __name__ == '__main__':
     d = Dominos()
-    d.validate_address()
