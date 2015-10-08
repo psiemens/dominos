@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -108,6 +109,14 @@ func (d *Dominos) SetDefaults() {
 	d.Order.SetDefaults()
 }
 
+func (d *Dominos) SetAddress(street, city, region, postal, resType string) {
+	d.Order.SetAddress(street, city, region, postal, resType)
+}
+
+func (d *Dominos) ToJSONString() string {
+	return d.Order.ToJSONString()
+}
+
 func (d *Dominos) SetStores() {
 	address := d.Order.GetAddress()
 	city := address["City"]
@@ -145,8 +154,7 @@ func (d *Dominos) SelectStore() {
 	}
 	fmt.Println("Select the location nearest to you")
 	for key := range stores.([]interface{}) {
-		location := stores.([]interface{})[key]
-		description := strings.Replace(location.(map[string]interface{})["AddressDescription"].(string), "\n", "-", 1)
+		description := strings.Replace(stores.([]interface{})[key].(map[string]interface{})["AddressDescription"].(string), "\n", "-", 1)
 		fmt.Printf("(%d): %s\n", key+1, description)
 	}
 	reader := bufio.NewReader(os.Stdin)
@@ -161,14 +169,36 @@ func (d *Dominos) SelectStore() {
 	d.Order.order["StoreID"] = stores.([]interface{})[option-1].(map[string]interface{})["StoreID"].(string)
 }
 
+func (d *Dominos) ValidateOrder() {
+	endpoint := "https://order.dominos.ca/power/validate-order"
+	bodyType := "application/json"
+	bodyString := d.Order.ToJSONString()
+	jsonBytes := bytes.NewBuffer([]byte(bodyString))
+	resp, err := http.Post(endpoint, bodyType, jsonBytes)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	bodyResp, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		panic(err)
+	}
+	jsonResponse := make(map[string]interface{})
+	err = json.Unmarshal(bodyResp, &jsonResponse)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(jsonResponse)
+}
+
 //
 
 func main() {
 	order := Dominos{}
 	order.SetDefaults()
-	order.Order.SetAddress("3457 West 1st Avenue", "Vancouver", "BRITISH COLUMBIA", "V6R1G6", "House")
+	order.SetAddress("3457 West 1st Avenue", "Vancouver", "BRITISH COLUMBIA", "V6R1G6", "House")
 	order.SetStores()
 	order.SelectStore()
-	JSON := order.Order.ToJSONString()
-	fmt.Println(JSON)
+	JSON := order.ToJSONString()
+	order.ValidateOrder()
 }
