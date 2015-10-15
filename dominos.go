@@ -18,25 +18,25 @@ type DominosOrder struct {
 	// Representation of the order JSON object
 	order map[string]interface{}
 	// Pizza sizes
-	sizes map[string]string
-	// Pizza toppings
 	options map[string]string
 }
+
+const (
+	SMALL  = "10SCREEN"
+	MEDIUM = "12SCREEN"
+	LARGE  = "14SCREEN"
+)
+
+const (
+	CHEESE    = "C"
+	PEPPERONI = "P"
+	BACON     = "B"
+	HAM       = "H"
+)
 
 type PriceResponse map[string]float32
 
 func (d *DominosOrder) SetDefaults() {
-	d.options = map[string]string{
-		"cheese":    "C",
-		"pepperoni": "P",
-		"bacon":     "B",
-		"ham":       "H",
-	}
-	d.sizes = map[string]string{
-		"s": "10SCREEN",
-		"m": "12SCREEN",
-		"l": "14SCREEN",
-	}
 	d.order = map[string]interface{}{
 		"Address":               map[string]string{},
 		"Amounts":               PriceResponse{},
@@ -64,6 +64,66 @@ func (d *DominosOrder) SetDefaults() {
 	}
 }
 
+///////////////////////////////////////////////////
+
+type Pizza struct {
+	Size     string
+	Toppings Toppings
+}
+
+type Toppings []string
+
+func (p *Pizza) ConfigurePizza(pizzas *[]Pizza) {
+	fmt.Print("Choose a size: s,m,l ")
+	reader := bufio.NewReader(os.Stdin)
+	text, _ := reader.ReadString('\n')
+	size := strings.ToLower(text)
+	switch {
+	case strings.Contains(size, "s"):
+		p.Size = SMALL
+	case strings.Contains(size, "m"):
+		p.Size = MEDIUM
+	case strings.Contains(size, "l"):
+		p.Size = LARGE
+	}
+	fmt.Print("Choose toppings, comma seperated: ham,pepperoni,cheese,bacon ")
+	text, _ = reader.ReadString('\n')
+	toppings := strings.ToLower(text)
+	p.Toppings = []string{}
+	for _, topping := range strings.Split(toppings, ",") {
+		p.Toppings.AddToppings(topping)
+	}
+}
+
+func (t *Toppings) AddToppings(topping string) {
+	switch {
+	case strings.Contains(topping, "pepporoni"):
+		*t = append(*t, PEPPERONI)
+	case strings.Contains(topping, "ham"):
+		*t = append(*t, HAM)
+	case strings.Contains(topping, "cheese"):
+		*t = append(*t, CHEESE)
+	case strings.Contains(topping, "bacon"):
+		*t = append(*t, BACON)
+	}
+}
+
+///////////////////////////////////////////////////
+
+func (d *Dominos) ChooseProducts() {
+	pizzas := &[]Pizza{}
+	for {
+		fmt.Print("Add a pizza?: y/n ")
+		reader := bufio.NewReader(os.Stdin)
+		text, _ := reader.ReadString('\n')
+		if !strings.Contains(text, "y") {
+			break
+		}
+		pizza := &Pizza{}
+		pizza.ConfigurePizza(pizzas)
+	}
+}
+
 func (d *DominosOrder) SetAddress(street, city, region, postal, resType string) {
 	d.order["Address"].(map[string]string)["Street"] = street
 	d.order["Address"].(map[string]string)["City"] = city
@@ -76,7 +136,6 @@ func (d *DominosOrder) SetStore(storeId string) {
 	d.order["StoreID"] = storeId
 }
 
-// SetPrice is a method to set the
 func (d *DominosOrder) SetPrice(prices PriceResponse) {
 	d.order["Amounts"] = prices
 }
@@ -89,8 +148,16 @@ func (d *DominosOrder) GetAddress() map[string]string {
 	return d.order["Address"].(map[string]string)
 }
 
+func ToJSON(v interface{}) ([]byte, error) {
+	JSON, err := json.Marshal(v)
+	if err != nil {
+		return []byte{}, err
+	}
+	return JSON, nil
+}
+
 func (d *DominosOrder) ToJSONString() string {
-	JSON, err := json.Marshal(d.order)
+	JSON, err := ToJSON(d.order)
 	if err != nil {
 		panic(err)
 	}
@@ -188,7 +255,11 @@ func (d *Dominos) ValidateOrder() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(jsonResponse)
+	json, err := ToJSON(jsonResponse)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(string(json))
 }
 
 //
@@ -199,6 +270,8 @@ func main() {
 	order.SetAddress("3457 West 1st Avenue", "Vancouver", "BRITISH COLUMBIA", "V6R1G6", "House")
 	order.SetStores()
 	order.SelectStore()
-	JSON := order.ToJSONString()
+	//JSON := order.ToJSONString()
+	//fmt.Println(JSON)
 	order.ValidateOrder()
+	order.ChooseProducts()
 }
