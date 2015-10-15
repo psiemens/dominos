@@ -30,7 +30,7 @@ const (
 const (
 	CHEESE    = "C"
 	PEPPERONI = "P"
-	BACON     = "B"
+	BEEF      = "B"
 	HAM       = "H"
 )
 
@@ -66,52 +66,45 @@ func (d *DominosOrder) SetDefaults() {
 
 ///////////////////////////////////////////////////
 
-type Pizza struct {
-	Size     string
-	Toppings Toppings
-}
+type Pizza map[string]interface{}
 
-type Toppings []string
-
-func (p *Pizza) ConfigurePizza(pizzas *[]Pizza) {
-	fmt.Print("Choose a size: s,m,l ")
+func ConfigurePizza(p Pizza) Pizza {
+	fmt.Print("Choose a size - s,m,l:\n")
 	reader := bufio.NewReader(os.Stdin)
 	text, _ := reader.ReadString('\n')
 	size := strings.ToLower(text)
 	switch {
 	case strings.Contains(size, "s"):
-		p.Size = SMALL
+		p["size"] = SMALL
 	case strings.Contains(size, "m"):
-		p.Size = MEDIUM
+		p["size"] = MEDIUM
 	case strings.Contains(size, "l"):
-		p.Size = LARGE
+		p["size"] = LARGE
 	}
-	fmt.Print("Choose toppings, comma seperated: ham,pepperoni,cheese,bacon ")
+	fmt.Print("Choose toppings, comma seperated - ham,pepperoni,cheese,beef:\n")
 	text, _ = reader.ReadString('\n')
 	toppings := strings.ToLower(text)
-	p.Toppings = []string{}
+	pizzaToppings := []string{}
 	for _, topping := range strings.Split(toppings, ",") {
-		p.Toppings.AddToppings(topping)
+		switch {
+		case strings.Contains(topping, "pepperoni"):
+			pizzaToppings = append(pizzaToppings, PEPPERONI)
+		case strings.Contains(topping, "ham"):
+			pizzaToppings = append(pizzaToppings, HAM)
+		case strings.Contains(topping, "cheese"):
+			pizzaToppings = append(pizzaToppings, CHEESE)
+		case strings.Contains(topping, "beef"):
+			pizzaToppings = append(pizzaToppings, BEEF)
+		}
 	}
-}
-
-func (t *Toppings) AddToppings(topping string) {
-	switch {
-	case strings.Contains(topping, "pepporoni"):
-		*t = append(*t, PEPPERONI)
-	case strings.Contains(topping, "ham"):
-		*t = append(*t, HAM)
-	case strings.Contains(topping, "cheese"):
-		*t = append(*t, CHEESE)
-	case strings.Contains(topping, "bacon"):
-		*t = append(*t, BACON)
-	}
+	p["toppings"] = pizzaToppings
+	return p
 }
 
 ///////////////////////////////////////////////////
 
 func (d *Dominos) ChooseProducts() {
-	pizzas := &[]Pizza{}
+	pizzas := []Pizza{}
 	for {
 		fmt.Print("Add a pizza?: y/n ")
 		reader := bufio.NewReader(os.Stdin)
@@ -119,9 +112,33 @@ func (d *Dominos) ChooseProducts() {
 		if !strings.Contains(text, "y") {
 			break
 		}
-		pizza := &Pizza{}
-		pizza.ConfigurePizza(pizzas)
+		pizza := Pizza{}
+		pizzas = append(pizzas, ConfigurePizza(pizza))
 	}
+	products := []map[string]interface{}{}
+	for n, pizza := range pizzas {
+		options := BuildOptions(pizza["toppings"].([]string))
+		product := map[string]interface{}{
+			"Code":         pizza["size"],
+			"Qty":          1,
+			"ID":           n,
+			"Instructions": "",
+			"isNew":        true,
+			"Options":      options,
+		}
+		products = append(products, product)
+	}
+	d.Order.order["Products"] = products
+}
+
+func BuildOptions(toppings []string) map[string]map[string]string {
+	options := map[string]map[string]string{}
+	for _, topping := range toppings {
+		options[topping] = map[string]string{
+			"1/1": "1",
+		}
+	}
+	return options
 }
 
 func (d *DominosOrder) SetAddress(street, city, region, postal, resType string) {
@@ -169,6 +186,7 @@ func (d *DominosOrder) ToJSONString() string {
 type Dominos struct {
 	Order     DominosOrder
 	Locations map[string]interface{}
+	Price     map[string]interface{}
 }
 
 func (d *Dominos) SetDefaults() {
@@ -210,7 +228,14 @@ func (d *Dominos) SetStores() {
 	if err != nil {
 		panic(err)
 	}
+	locationsToStore := []interface{}{}
+	for _, location := range locations["Stores"].([]interface{}) {
+		if location.(map[string]interface{})["IsOnlineNow"].(bool) {
+			locationsToStore = append(locationsToStore, location)
+		}
+	}
 	d.Locations = locations
+	d.Locations["Stores"] = locationsToStore
 }
 
 func (d *Dominos) SelectStore() {
@@ -255,14 +280,64 @@ func (d *Dominos) ValidateOrder() {
 	if err != nil {
 		panic(err)
 	}
-	json, err := ToJSON(jsonResponse)
+}
+
+func (d *Dominos) PriceOrder() {
+	endpoint := "https://order.dominos.ca/power/price-order"
+	bodyType := "application/json"
+	bodyString := d.Order.ToJSONString()
+	jsonBytes := bytes.NewBuffer([]byte(bodyString))
+	resp, err := http.Post(endpoint, bodyType, jsonBytes)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(string(json))
+	defer resp.Body.Close()
+	bodyResp, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		panic(err)
+	}
+	jsonResponse := make(map[string]interface{})
+	err = json.Unmarshal(bodyResp, &jsonResponse)
+	if err != nil {
+		panic(err)
+	}
+	d.Order.order["Amounts"] = jsonResponse["Order"].(map[string]interface{})["Amounts"]
 }
 
-//
+func (d *Dominos) GetTotal() float64 {
+	return d.Order.order["Amounts"].(map[string]interface{})["Payment"].(float64)
+}
+
+func (d *Dominos) SetInformation() {
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Println("First name: ")
+	text, _ := reader.ReadString('\n')
+	d.Order.order["FirstName"] = strings.Replace(text, "\n", "", 1)
+	fmt.Println("Last name: ")
+	text, _ = reader.ReadString('\n')
+	d.Order.order["LastName"] = strings.Replace(text, "\n", "", 1)
+	fmt.Println("Email: ")
+	text, _ = reader.ReadString('\n')
+	d.Order.order["Email"] = strings.Replace(text, "\n", "", 1)
+	fmt.Println("Phone: ")
+	text, _ = reader.ReadString('\n')
+	d.Order.order["Phone"] = strings.Replace(text, "\n", "", 1)
+}
+
+func (d *Dominos) ConfirmOrder() {
+	fmt.Printf("Order total is %g\n", d.GetTotal())
+	fmt.Println("Do you want to place the order? y/n")
+	reader := bufio.NewReader(os.Stdin)
+	text, _ := reader.ReadString('\n')
+	if !strings.Contains(strings.ToLower(text), "y") {
+		panic("YOU DONT WANT PIZZA, NO PIZZA FOR YOU")
+	}
+	d.SetInformation()
+}
+
+func (d *Dominos) Tracker(phone string) {
+
+}
 
 func main() {
 	order := Dominos{}
@@ -270,8 +345,10 @@ func main() {
 	order.SetAddress("3457 West 1st Avenue", "Vancouver", "BRITISH COLUMBIA", "V6R1G6", "House")
 	order.SetStores()
 	order.SelectStore()
-	//JSON := order.ToJSONString()
-	//fmt.Println(JSON)
 	order.ValidateOrder()
 	order.ChooseProducts()
+	order.ValidateOrder()
+	order.PriceOrder()
+	order.ConfirmOrder()
+
 }
