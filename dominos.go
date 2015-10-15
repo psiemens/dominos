@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -28,10 +29,29 @@ const (
 )
 
 const (
-	CHEESE    = "C"
-	PEPPERONI = "P"
-	BEEF      = "B"
-	HAM       = "H"
+	CHEESE            = "C"
+	PEPPERONI         = "P"
+	BROOKLYNPEPPERONI = "Xp"
+	SAUSAGE           = "S"
+	BEEF              = "B"
+	HAM               = "H"
+	BACON             = "K"
+	SALAMI            = "L"
+	CHICKEN           = "D"
+	PHILLYSTEAK       = "St"
+	ANCHOVY           = "A"
+	CHEDDARMOZZA      = "Cm"
+	FETA              = "Fe"
+	PROVOLONE         = "Cp"
+	BANANAPEPPERS     = "Z"
+	BLACKOLIVES       = "R"
+	GREENOLIVES       = "V"
+	GREENPEPPERS      = "G"
+	MUSHROOM          = "M"
+	PINEAPPLE         = "N"
+	ONION             = "O"
+	TOMATOES          = "T"
+	JALAPENOPEPPERS   = "J"
 )
 
 type PriceResponse map[string]float32
@@ -87,14 +107,52 @@ func ConfigurePizza(p Pizza) Pizza {
 	pizzaToppings := []string{}
 	for _, topping := range strings.Split(toppings, ",") {
 		switch {
-		case strings.Contains(topping, "pepperoni"):
-			pizzaToppings = append(pizzaToppings, PEPPERONI)
-		case strings.Contains(topping, "ham"):
-			pizzaToppings = append(pizzaToppings, HAM)
 		case strings.Contains(topping, "cheese"):
 			pizzaToppings = append(pizzaToppings, CHEESE)
+		case strings.Contains(topping, "pepperoni"):
+			pizzaToppings = append(pizzaToppings, PEPPERONI)
+		case strings.Contains(topping, "brooklyn pepperoni"):
+			pizzaToppings = append(pizzaToppings, BROOKLYNPEPPERONI)
+		case strings.Contains(topping, "sausage"):
+			pizzaToppings = append(pizzaToppings, SAUSAGE)
 		case strings.Contains(topping, "beef"):
 			pizzaToppings = append(pizzaToppings, BEEF)
+		case strings.Contains(topping, "ham"):
+			pizzaToppings = append(pizzaToppings, HAM)
+		case strings.Contains(topping, "bacon"):
+			pizzaToppings = append(pizzaToppings, BACON)
+		case strings.Contains(topping, "salami"):
+			pizzaToppings = append(pizzaToppings, SALAMI)
+		case strings.Contains(topping, "chicken"):
+			pizzaToppings = append(pizzaToppings, CHICKEN)
+		case strings.Contains(topping, "philly steak"):
+			pizzaToppings = append(pizzaToppings, PHILLYSTEAK)
+		case strings.Contains(topping, "anchovy"):
+			pizzaToppings = append(pizzaToppings, ANCHOVY)
+		case strings.Contains(topping, "cheddar/mozza"):
+			pizzaToppings = append(pizzaToppings, CHEDDARMOZZA)
+		case strings.Contains(topping, "feta"):
+			pizzaToppings = append(pizzaToppings, FETA)
+		case strings.Contains(topping, "provolone"):
+			pizzaToppings = append(pizzaToppings, PROVOLONE)
+		case strings.Contains(topping, "banana peppers"):
+			pizzaToppings = append(pizzaToppings, BANANAPEPPERS)
+		case strings.Contains(topping, "black olives"):
+			pizzaToppings = append(pizzaToppings, BLACKOLIVES)
+		case strings.Contains(topping, "green olives"):
+			pizzaToppings = append(pizzaToppings, GREENOLIVES)
+		case strings.Contains(topping, "green peppers"):
+			pizzaToppings = append(pizzaToppings, GREENPEPPERS)
+		case strings.Contains(topping, "mushroom"):
+			pizzaToppings = append(pizzaToppings, MUSHROOM)
+		case strings.Contains(topping, "pineapple"):
+			pizzaToppings = append(pizzaToppings, PINEAPPLE)
+		case strings.Contains(topping, "onion"):
+			pizzaToppings = append(pizzaToppings, ONION)
+		case strings.Contains(topping, "tomatoes"):
+			pizzaToppings = append(pizzaToppings, TOMATOES)
+		case strings.Contains(topping, "jalapeno peppers"):
+			pizzaToppings = append(pizzaToppings, JALAPENOPEPPERS)
 		}
 	}
 	p["toppings"] = pizzaToppings
@@ -308,6 +366,15 @@ func (d *Dominos) GetTotal() float64 {
 	return d.Order.order["Amounts"].(map[string]interface{})["Payment"].(float64)
 }
 
+func stripchars(str, chr string) string {
+	return strings.Map(func(r rune) rune {
+		if strings.IndexRune(chr, r) < 0 {
+			return r
+		}
+		return -1
+	}, str)
+}
+
 func (d *Dominos) SetInformation() {
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Println("First name: ")
@@ -321,7 +388,7 @@ func (d *Dominos) SetInformation() {
 	d.Order.order["Email"] = strings.Replace(text, "\n", "", 1)
 	fmt.Println("Phone: ")
 	text, _ = reader.ReadString('\n')
-	d.Order.order["Phone"] = strings.Replace(text, "\n", "", 1)
+	d.Order.order["Phone"] = stripchars(strings.Replace(text, "\n", "", 1), "-. ")
 }
 
 func (d *Dominos) ConfirmOrder() {
@@ -333,22 +400,85 @@ func (d *Dominos) ConfirmOrder() {
 		panic("YOU DONT WANT PIZZA, NO PIZZA FOR YOU")
 	}
 	d.SetInformation()
+	//d.PlaceOrder()
 }
 
-func (d *Dominos) Tracker(phone string) {
+func (d *Dominos) PlaceOrder() {
+	endpoint := "https://order.dominos.ca/power/place-order"
+	bodyType := "application/json"
+	bodyString := d.Order.ToJSONString()
+	jsonBytes := bytes.NewBuffer([]byte(bodyString))
+	resp, err := http.Post(endpoint, bodyType, jsonBytes)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	bodyResp, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		panic(err)
+	}
+	jsonResponse := make(map[string]interface{})
+	err = json.Unmarshal(bodyResp, &jsonResponse)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(resp.Status)
+	fmt.Println(resp.StatusCode)
+	fmt.Println(ToJSON(jsonBytes))
+}
 
+type Envelope struct {
+	XMLName xml.Name `xml:"http://schemas.xmlsoap.org/soap/envelope/ Envelope"`
+	Soap    *SoapBody
+}
+type SoapBody struct {
+	XMLName   xml.Name `xml:"http://schemas.xmlsoap.org/soap/envelope/ Body"`
+	Tresponse *TokenResponse
+}
+type TokenResponse struct {
+	XMLName xml.Name `xml:"GetTrackerDataResponse"`
+	Tresult *SubTokenResponse
+}
+type SubTokenResponse struct {
+	XMLName xml.Name `xml:"OrderStatuses"`
+	Tresult *[]TokenResult
+}
+type TokenResult struct {
+	XMLName xml.Name `xml:"OrderStatus"`
+	Token   string   `xml:"OrderStatus"`
+}
+
+func (d *Dominos) Tracker() {
+	//d.Order.order["Phone"].(string)
+	endpoint := fmt.Sprintf("https://order.dominos.ca/orderstorage/GetTrackerData?Phone=%s", "3067156976")
+	resp, err := http.Get(endpoint)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		panic(err)
+	}
+	response := new(Envelope)
+	err = xml.Unmarshal(body, &response)
+	if err != nil {
+		fmt.Printf("error: %v", err)
+		return
+	}
+	fmt.Println(response.Soap.Tresponse.Tresult.Tresult)
 }
 
 func main() {
 	order := Dominos{}
-	order.SetDefaults()
-	order.SetAddress("3457 West 1st Avenue", "Vancouver", "BRITISH COLUMBIA", "V6R1G6", "House")
-	order.SetStores()
-	order.SelectStore()
-	order.ValidateOrder()
-	order.ChooseProducts()
-	order.ValidateOrder()
-	order.PriceOrder()
-	order.ConfirmOrder()
-
+	// order.SetDefaults()
+	// order.SetAddress("3457 West 1st Avenue", "Vancouver", "BRITISH COLUMBIA", "V6R1G6", "House")
+	// order.SetStores()
+	// order.SelectStore()
+	// order.ValidateOrder()
+	// order.ChooseProducts()
+	// order.ValidateOrder()
+	// order.PriceOrder()
+	// order.ConfirmOrder()
+	order.Tracker()
 }
