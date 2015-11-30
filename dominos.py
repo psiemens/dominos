@@ -1,6 +1,8 @@
 import click
 import requests
 import json
+import threading
+from xml.etree import ElementTree
 
 @click.command()
 @click.option("--address", prompt=True)
@@ -106,6 +108,25 @@ class Dominos(object):
 		phone = click.prompt("Phone number", type=str)
 		email = click.prompt("Email", type=str)
 		self.order.set_information(first_name, last_name, phone, email)
+
+class DominosPizzaTracker(object):
+
+	TRACKER_URL = 'https://order.dominos.ca/orderstorage/GetTrackerData'
+
+	def __init__(self, phone_number):
+
+		self.phone_number = phone_number
+
+	def track(self, phone_number):
+		self.update_tracker()
+
+	def update_tracker(self):
+
+		response = requests.get(self.TRACKER_URL, params={"Phone": self.phone_number})
+
+		tree = ElementTree.fromstring(response.content)
+
+		threading.Timer(20.0, self.update_tracker).start()
 
 class DominosOrder(object):
 
